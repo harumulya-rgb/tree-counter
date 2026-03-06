@@ -1,16 +1,52 @@
-# React + Vite
+# 🌳 Tree Counter
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A sleek, modern web application designed for marking and counting trees (or any points of interest) on high-resolution aerial or drone images.
 
-Currently, two official plugins are available:
+![App Icon](public/icon.png)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Features
 
-## React Compiler
+- **High-Performance Image Viewer**: Smooth zoom and pan for large aerial images using `react-zoom-pan-pinch`.
+- **Intelligent Marking**: 
+  - `Ctrl + Click` to add a marker.
+  - Click any marker to view details or **Delete** it.
+- **Group Management**: Organize markers into custom groups with unique colors and names.
+- **Dynamic Legends**: Automatic legend generation on the canvas during export.
+- **Pro Exports**: Export your data to:
+  - **CSV**: Full coordinate data with group information.
+  - **Image (JPG)**: High-resolution export with all markers and a color-coded legend.
+  - **PDF**: Ready-to-print reports scaled to A4.
+- **Project Persistence**: Save and load your entire project (image + markers + groups) as a `.json` file to resume work later.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Security & Performance (Audited)
 
-## Expanding the ESLint configuration
+- **Memory Efficient**: Correctly handles browser memory by revoking object URLs after downloads.
+- **Safe Exports**: Robust CSV sanitization to prevent injection attacks.
+- **Fast Load Times**: Optimized build with automatic chunk splitting for large libraries like `jsPDF`.
+- **Non-blocking UI**: Modern toast notifications replace disruptive browser alerts.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 📦 Getting Started
+
+1. **Clone & Install**:
+   ```bash
+   git clone https://github.com/harumulya-rgb/tree-counter.git
+   cd tree-counter
+   npm install
+   ```
+2. **Development**:
+   ```bash
+   npm run dev
+   ```
+3. **Production Build**:
+   ```bash
+   npm run build
+   ```
+
+## 🌐 Deployment
+
+This project is configured for seamless deployment:
+- **GitHub Pages**: Automatically deployed via GitHub Actions when pushing to `master`.
+- **Vercel**: Pre-configured for zero-config Vercel deployments.
+
+---
+*Created with ❤️ for precision mapping.*

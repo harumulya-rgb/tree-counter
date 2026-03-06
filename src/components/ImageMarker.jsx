@@ -79,8 +79,8 @@ const Marker = React.memo(({ x, y, color, size, index, imageWidth, imageHeight, 
             <div
                 onClick={handleClick}
                 className={`rounded-full border-2 cursor-pointer transition-all duration-150 ${isSelected
-                        ? 'border-white shadow-[0_0_0_3px_rgba(255,255,255,0.35)] scale-125'
-                        : 'border-white/70 shadow-sm hover:border-white hover:scale-110'
+                    ? 'border-white shadow-[0_0_0_3px_rgba(255,255,255,0.35)] scale-125'
+                    : 'border-white/70 shadow-sm hover:border-white hover:scale-110'
                     }`}
                 style={{
                     width: `${size}px`,
@@ -97,6 +97,7 @@ Marker.displayName = 'Marker';
 const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, onAddMarker, onRemoveMarker, pointSize = 1, groups }) {
     const imageRef = useRef(null);
     const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+    const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
     const [selectedMarkerId, setSelectedMarkerId] = useState(null);
 
     const handleImageLoad = useCallback((e) => {
@@ -104,13 +105,22 @@ const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, on
             width: e.target.naturalWidth,
             height: e.target.naturalHeight
         });
+        // Also capture the rendered (displayed) size right away
+        setRenderedSize({
+            width: e.target.clientWidth,
+            height: e.target.clientHeight
+        });
     }, []);
 
+    // Keep rendered size in sync when the window resizes
     const handleImageClick = useCallback((e) => {
         if (!imageRef.current) return;
         const rect = imageRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        // Update rendered size in case it changed (e.g. after zoom/resize)
+        setRenderedSize({ width: rect.width, height: rect.height });
+        // Clamp to image bounds to avoid negative or out-of-range coords
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
         const scaleX = naturalSize.width / rect.width;
         const scaleY = naturalSize.height / rect.height;
         onAddMarker(Math.round(x * scaleX), Math.round(y * scaleY));
@@ -164,39 +174,50 @@ const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, on
             >
                 <MapControls />
                 <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                    <div
-                        className="relative inline-block isolate max-w-full max-h-full"
-                        onPointerDownCapture={onPointerDown}
-                    >
+                    {/* Outer div is just a positioning context; does NOT get pointer events */}
+                    <div className="relative" style={{ display: 'inline-block' }}>
                         <img
                             ref={imageRef}
                             src={src}
                             alt="Map"
-                            className="max-w-[90vw] max-h-[90vh] object-contain shadow-2xl"
+                            className="max-w-[90vw] max-h-[90vh] object-contain shadow-2xl block"
                             onLoad={handleImageLoad}
                             onDragStart={handleDragStart}
                             crossOrigin="anonymous"
                             id="exportable-image"
                         />
-                        {/* Render markers */}
-                        {naturalSize.width > 0 && markers.map((marker, index) => (
-                            <Marker
-                                key={marker.id}
-                                x={marker.x}
-                                y={marker.y}
-                                color={groupColorMap[marker.groupId] || defaultColor}
-                                size={dynamicSize}
-                                index={index}
-                                imageWidth={naturalSize.width}
-                                imageHeight={naturalSize.height}
-                                isSelected={selectedMarkerId === marker.id}
-                                onSelect={() => setSelectedMarkerId(prev => prev === marker.id ? null : marker.id)}
-                                onDelete={() => {
-                                    onRemoveMarker(marker.id);
-                                    setSelectedMarkerId(null);
+                        {/* Marker overlay: sized exactly to the rendered image so % positions are accurate */}
+                        {naturalSize.width > 0 && renderedSize.width > 0 && (
+                            <div
+                                className="absolute inset-0"
+                                style={{
+                                    width: renderedSize.width,
+                                    height: renderedSize.height,
+                                    top: 0,
+                                    left: 0,
                                 }}
-                            />
-                        ))}
+                                onPointerDownCapture={onPointerDown}
+                            >
+                                {markers.map((marker, index) => (
+                                    <Marker
+                                        key={marker.id}
+                                        x={marker.x}
+                                        y={marker.y}
+                                        color={groupColorMap[marker.groupId] || defaultColor}
+                                        size={dynamicSize}
+                                        index={index}
+                                        imageWidth={naturalSize.width}
+                                        imageHeight={naturalSize.height}
+                                        isSelected={selectedMarkerId === marker.id}
+                                        onSelect={() => setSelectedMarkerId(prev => prev === marker.id ? null : marker.id)}
+                                        onDelete={() => {
+                                            onRemoveMarker(marker.id);
+                                            setSelectedMarkerId(null);
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </TransformComponent>
             </TransformWrapper>

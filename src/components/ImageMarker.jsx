@@ -19,46 +19,58 @@ const MapControls = React.memo(() => {
 });
 MapControls.displayName = 'MapControls';
 
-// Individual marker — clickable, shows delete popover when selected
+// Individual marker — shown inside the image transform so it scales with zoom
 const Marker = React.memo(({ x, y, color, size, index, imageWidth, imageHeight, isSelected, onSelect, onDelete }) => {
     const leftPercent = (x / imageWidth) * 100;
     const topPercent = (y / imageHeight) * 100;
 
+    const stopAll = useCallback((e) => {
+        e.stopPropagation();
+        e.preventDefault();
+    }, []);
+
     const handleClick = useCallback((e) => {
-        e.stopPropagation(); // prevent triggering the image's pointerDown
+        e.stopPropagation();
+        e.preventDefault();
         onSelect();
     }, [onSelect]);
 
     const handleDelete = useCallback((e) => {
         e.stopPropagation();
+        e.preventDefault();
         onDelete();
     }, [onDelete]);
 
     return (
         <div
-            className="absolute"
+            // pointer-events-none on wrapper so it doesn't block pan/zoom on empty areas;
+            // re-enabled selectively on the dot and popover.
+            className="absolute pointer-events-none"
             style={{
                 left: `${leftPercent}%`,
                 top: `${topPercent}%`,
+                // Use translate so the element origin is the marker center
+                // but occupies ZERO layout space (width/height stay 0).
                 transform: 'translate(-50%, -50%)',
                 zIndex: isSelected ? 100 : 1,
             }}
         >
-            {/* Delete popover — shown above the marker when selected */}
+            {/* Delete popover */}
             {isSelected && (
                 <div
-                    className="absolute flex items-center gap-1 bg-gray-900 border border-white/20 rounded-lg px-2 py-1 shadow-xl whitespace-nowrap"
+                    className="absolute flex items-center gap-1 bg-gray-900 border border-white/20 rounded-lg px-2 py-1 shadow-xl whitespace-nowrap pointer-events-auto"
                     style={{
                         bottom: `calc(100% + ${size * 0.6}px)`,
                         left: '50%',
                         transform: 'translateX(-50%)',
                     }}
-                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerDown={stopAll}
                 >
                     <span className="text-white/70 text-[11px] font-mono">#{index + 1}</span>
                     <div className="w-px h-3 bg-white/20" />
                     <button
                         onClick={handleDelete}
+                        onPointerDown={stopAll}
                         className="flex items-center gap-1 text-red-400 hover:text-red-300 text-[11px] font-medium transition-colors hover:bg-red-500/10 px-1 py-0.5 rounded"
                         title="Delete marker"
                     >
@@ -75,12 +87,13 @@ const Marker = React.memo(({ x, y, color, size, index, imageWidth, imageHeight, 
                 </div>
             )}
 
-            {/* The marker dot */}
+            {/* Marker dot */}
             <div
                 onClick={handleClick}
-                className={`rounded-full border-2 cursor-pointer transition-all duration-150 ${isSelected
-                    ? 'border-white shadow-[0_0_0_3px_rgba(255,255,255,0.35)] scale-125'
-                    : 'border-white/70 shadow-sm hover:border-white hover:scale-110'
+                onPointerDown={stopAll}
+                className={`rounded-full cursor-pointer transition-all duration-150 pointer-events-auto ${isSelected
+                        ? 'scale-125 shadow-lg'
+                        : 'hover:scale-110'
                     }`}
                 style={{
                     width: `${size}px`,
@@ -97,68 +110,53 @@ Marker.displayName = 'Marker';
 const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, onAddMarker, onRemoveMarker, pointSize = 1, groups }) {
     const imageRef = useRef(null);
     const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
-    const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
     const [selectedMarkerId, setSelectedMarkerId] = useState(null);
 
     const handleImageLoad = useCallback((e) => {
-        setNaturalSize({
-            width: e.target.naturalWidth,
-            height: e.target.naturalHeight
-        });
-        // Also capture the rendered (displayed) size right away
-        setRenderedSize({
-            width: e.target.clientWidth,
-            height: e.target.clientHeight
-        });
+        setNaturalSize({ width: e.target.naturalWidth, height: e.target.naturalHeight });
     }, []);
 
-    // Keep rendered size in sync when the window resizes
-    const handleImageClick = useCallback((e) => {
-        if (!imageRef.current) return;
-        const rect = imageRef.current.getBoundingClientRect();
-        // Update rendered size in case it changed (e.g. after zoom/resize)
-        setRenderedSize({ width: rect.width, height: rect.height });
-        // Clamp to image bounds to avoid negative or out-of-range coords
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-        const scaleX = naturalSize.width / rect.width;
-        const scaleY = naturalSize.height / rect.height;
-        onAddMarker(Math.round(x * scaleX), Math.round(y * scaleY));
-    }, [naturalSize, onAddMarker]);
+    const handleDragStart = useCallback((e) => { e.preventDefault(); }, []);
 
-    const handleDragStart = useCallback((e) => {
-        e.preventDefault();
-    }, []);
-
-    // Pre-compute group color lookup map for O(1) access per marker
+    // Group color lookup
     const groupColorMap = useMemo(() => {
         const map = {};
-        if (groups) {
-            for (const g of groups) {
-                map[g.id] = g.color;
-            }
-        }
+        if (groups) for (const g of groups) map[g.id] = g.color;
         return map;
     }, [groups]);
 
-    // Calculate dynamic marker size
+    // Dynamic marker size based on image resolution
     const dynamicSize = useMemo(() => {
-        const baseMarkerSize = Math.max(4, Math.min(40, naturalSize.width * 0.005));
-        return baseMarkerSize * pointSize;
+        const base = Math.max(4, Math.min(40, naturalSize.width * 0.005));
+        return base * pointSize;
     }, [naturalSize.width, pointSize]);
 
     const defaultColor = groups?.[0]?.color || '#ef4444';
 
-    // Ctrl+Click on image → add marker; any other click on the image → deselect
+    // Ctrl+click → add marker and stop the event so react-zoom-pan-pinch
+    // never sees it (preventing accidental pan/zoom-out after placing a point).
     const onPointerDown = useCallback((e) => {
         if (e.ctrlKey || e.metaKey) {
-            handleImageClick(e);
             e.stopPropagation();
-        } else {
-            // Dismiss the selected marker (clicking on empty space)
+            e.preventDefault();
+            if (!imageRef.current) return;
+            const rect = imageRef.current.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+            const scaleX = naturalSize.width / rect.width;
+            const scaleY = naturalSize.height / rect.height;
+            onAddMarker(Math.round(x * scaleX), Math.round(y * scaleY));
+        }
+        // Non-ctrl clicks pass through freely so panning works normally.
+    }, [naturalSize, onAddMarker]);
+
+    // Plain click on empty space (no drag occurred) → deselect active marker.
+    // Using onClick instead of onPointerDown so it never blocks pan gestures.
+    const onClick = useCallback((e) => {
+        if (!e.ctrlKey && !e.metaKey) {
             setSelectedMarkerId(null);
         }
-    }, [handleImageClick]);
+    }, []);
 
     return (
         <div className="w-full h-full relative cursor-crosshair">
@@ -174,8 +172,26 @@ const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, on
             >
                 <MapControls />
                 <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                    {/* Outer div is just a positioning context; does NOT get pointer events */}
-                    <div className="relative" style={{ display: 'inline-block' }}>
+                    {/*
+                     * KEY STABILITY FIX:
+                     * - `contain: layout` isolates this box from overflowing children.
+                     *   Absolutely-positioned markers that visually overflow the image
+                     *   can never cause this container to grow, which was making the
+                     *   image jump out of view.
+                     * - Marker canvas uses `position:absolute; inset:0; width:100%; height:100%`
+                     *   so it always matches the image exactly — no ResizeObserver needed.
+                     * - Everything stays inside the TransformComponent so markers scale
+                     *   with zoom automatically (no transform math required).
+                     */}
+                    <div
+                        className="relative"
+                        style={{
+                            display: 'inline-block',
+                            contain: 'layout',
+                        }}
+                        onPointerDown={onPointerDown}
+                        onClick={onClick}
+                    >
                         <img
                             ref={imageRef}
                             src={src}
@@ -186,17 +202,18 @@ const ImageMarkerInner = React.memo(function ImageMarkerInner({ src, markers, on
                             crossOrigin="anonymous"
                             id="exportable-image"
                         />
-                        {/* Marker overlay: sized exactly to the rendered image so % positions are accurate */}
-                        {naturalSize.width > 0 && renderedSize.width > 0 && (
+
+                        {/* Marker canvas — sits exactly over the image, never affects layout */}
+                        {naturalSize.width > 0 && (
                             <div
-                                className="absolute inset-0"
+                                className="pointer-events-none"
                                 style={{
-                                    width: renderedSize.width,
-                                    height: renderedSize.height,
-                                    top: 0,
-                                    left: 0,
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    overflow: 'visible',
                                 }}
-                                onPointerDownCapture={onPointerDown}
                             >
                                 {markers.map((marker, index) => (
                                     <Marker
